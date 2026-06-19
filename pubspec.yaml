@@ -1,0 +1,28 @@
+name: build_slim
+description: >-
+  A CLI tool and library to analyze and reduce the size of Flutter APK,
+  AAB, and IPA build artifacts using best-practice optimizations.
+version: 0.1.0
+homepage: https://github.com/pierocarrion/build_slim
+repository: https://github.com/pierocarrion/build_slim.git
+issue_tracker: https://github.com/pierocarrion/build_slim/issues
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  args: ^2.4.0
+  yaml: ^3.1.0
+  path: ^1.9.0
+  collection: ^1.18.0
+  meta: ^1.9.0
+  ansi_styles: ^0.3.0
+
+dev_dependencies:
+  test: ^1.24.0
+  mocktail: ^1.0.0
+  lints: ^4.0.0
+
+executables:
+  build_slim: build_slim

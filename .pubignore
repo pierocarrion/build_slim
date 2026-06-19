@@ -1,0 +1,4 @@
+# Test fixtures and coverage artifacts
+test/test_helpers/fixture_project/
+coverage/
+*.log

@@ -1,0 +1,10 @@
+include: package:lints/recommended.yaml
+
+linter:
+  rules:
+    - prefer_final_locals
+    - prefer_final_in_for_each
+    - prefer_const_constructors
+    - avoid_dynamic_calls
+    - avoid_print
+    - public_member_api_docs
