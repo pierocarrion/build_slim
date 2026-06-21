@@ -2,3 +2,6 @@
 test/test_helpers/fixture_project/
 coverage/
 *.log
+
+# Build artifacts
+build/
