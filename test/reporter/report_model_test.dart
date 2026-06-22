@@ -26,30 +26,149 @@ void main() {
     timestamp: _fixedDate,
   );
 
-  test('serializes report to JSON', () {
-    final json = report.toJson();
-    expect(json['projectName'], 'test_app');
-    expect(json['target'], 'apk');
-    expect(json['beforeSizeBytes'], 1000);
-    expect(json['afterSizeBytes'], 800);
-    expect(json['savedBytes'], 200);
-    expect(json['savedPercent'], 20.0);
-    expect((json['findings'] as List).length, 1);
-    expect((json['appliedOptimizations'] as List).first,
-        'Injected --tree-shake-icons');
+  group('OptimizationReport.toJson', () {
+    test('serializes report to JSON', () {
+      final json = report.toJson();
+      expect(json['projectName'], 'test_app');
+      expect(json['target'], 'apk');
+      expect(json['beforeSizeBytes'], 1000);
+      expect(json['afterSizeBytes'], 800);
+      expect(json['savedBytes'], 200);
+      expect(json['savedPercent'], 20.0);
+      expect((json['findings'] as List).length, 1);
+      expect((json['appliedOptimizations'] as List).first,
+          'Injected --tree-shake-icons');
+    });
+
+    test('serializes nullable size fields as null when absent', () {
+      final r = OptimizationReport(
+        projectName: 'p',
+        target: BuildTarget.aab,
+        dartSdkVersion: 'x',
+        flutterVersion: 'y',
+        timestamp: _fixedDate,
+      );
+      final json = r.toJson();
+      expect(json['beforeSizeBytes'], isNull);
+      expect(json['afterSizeBytes'], isNull);
+      expect(json['savedBytes'], isNull);
+      expect(json['savedPercent'], isNull);
+    });
+
+    test('serializes empty findings and appliedOptimizations arrays', () {
+      final r = OptimizationReport(
+        projectName: 'p',
+        target: BuildTarget.ipa,
+        findings: const [],
+        appliedOptimizations: const [],
+        dartSdkVersion: 'x',
+        flutterVersion: 'y',
+        timestamp: _fixedDate,
+      );
+      final json = r.toJson();
+      expect(json['findings'], isEmpty);
+      expect(json['appliedOptimizations'], isEmpty);
+    });
+
+    test('uses default buildDurationMs of 0', () {
+      final r = OptimizationReport(
+        projectName: 'p',
+        target: BuildTarget.apk,
+        dartSdkVersion: 'x',
+        flutterVersion: 'y',
+        timestamp: _fixedDate,
+      );
+      expect(r.buildDurationMs, 0);
+      expect(r.toJson()['buildDurationMs'], 0);
+    });
+
+    test('serializes target enum by name for all variants', () {
+      for (final target in BuildTarget.values) {
+        final r = OptimizationReport(
+          projectName: 'p',
+          target: target,
+          dartSdkVersion: 'x',
+          flutterVersion: 'y',
+          timestamp: _fixedDate,
+        );
+        expect(r.toJson()['target'], target.name);
+      }
+    });
+
+    test('serializes timestamp as ISO-8601 string', () {
+      expect(report.toJson()['timestamp'], _fixedDate.toIso8601String());
+    });
   });
 
-  test('finding serializes to JSON', () {
-    const finding = Finding(
-      id: 'x',
-      severity: FindingSeverity.info,
-      title: 'T',
-      description: 'D',
-    );
-    final json = finding.toJson();
-    expect(json['id'], 'x');
-    expect(json['severity'], 'info');
-    expect(json['recommendation'], isNull);
+  group('Finding.toJson', () {
+    test('serializes with recommendation when provided', () {
+      const finding = Finding(
+        id: 'x',
+        severity: FindingSeverity.warning,
+        title: 'T',
+        description: 'D',
+        recommendation: 'do something',
+        estimatedSavingsBytes: 42,
+      );
+      final json = finding.toJson();
+      expect(json['recommendation'], 'do something');
+      expect(json['estimatedSavingsBytes'], 42);
+    });
+
+    test('omits recommendation key when null', () {
+      const finding = Finding(
+        id: 'x',
+        severity: FindingSeverity.info,
+        title: 'T',
+        description: 'D',
+      );
+      final json = finding.toJson();
+      expect(json.containsKey('recommendation'), isFalse);
+    });
+
+    test('omits estimatedSavingsBytes key when null', () {
+      const finding = Finding(
+        id: 'x',
+        severity: FindingSeverity.warning,
+        title: 'T',
+        description: 'D',
+      );
+      final json = finding.toJson();
+      expect(json.containsKey('estimatedSavingsBytes'), isFalse);
+    });
+
+    test('serializes all severity enum values by name', () {
+      for (final severity in FindingSeverity.values) {
+        final finding = Finding(
+          id: 'x',
+          severity: severity,
+          title: 'T',
+          description: 'D',
+        );
+        expect(finding.toJson()['severity'], severity.name);
+      }
+    });
+  });
+
+  group('BuildResult', () {
+    test('round-trips all fields with values', () {
+      const result = BuildResult(
+        exitCode: 0,
+        durationMs: 500,
+        artifactPath: '/tmp/out.apk',
+        artifactSizeBytes: 1234,
+      );
+      expect(result.exitCode, 0);
+      expect(result.durationMs, 500);
+      expect(result.artifactPath, '/tmp/out.apk');
+      expect(result.artifactSizeBytes, 1234);
+    });
+
+    test('allows nullable artifactPath and artifactSizeBytes', () {
+      const result = BuildResult(exitCode: 1, durationMs: 0);
+      expect(result.artifactPath, isNull);
+      expect(result.artifactSizeBytes, isNull);
+    });
   });
 }
 

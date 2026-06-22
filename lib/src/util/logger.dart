@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:ansi_styles/ansi_styles.dart';
 
 /// Verbosity level for [Logger].
@@ -18,13 +20,21 @@ enum LogLevel {
 /// A scoped, ANSI-aware logger for CLI output.
 class Logger {
   /// Creates a logger with the given [level] and optional [scope] prefix.
-  const Logger({this.level = LogLevel.info, this.scope});
+  ///
+  /// Pass [sink] to capture output in tests (e.g. a [StringBuffer]).
+  Logger({
+    this.level = LogLevel.info,
+    this.scope,
+    StringSink? sink,
+  }) : _sink = sink ?? stdout;
 
   /// The minimum level this logger emits.
   final LogLevel level;
 
   /// Optional prefix added to every message.
   final String? scope;
+
+  final StringSink _sink;
 
   String? get _prefix => scope == null ? null : '[$scope]';
 
@@ -36,8 +46,7 @@ class Logger {
     if (level.index < messageLevel.index) return;
     final prefix = _prefix;
     final output = prefix == null ? message : '$prefix $message';
-    // ignore: avoid_print
-    print(color?.call(output) ?? output);
+    _sink.writeln(color?.call(output) ?? output);
   }
 
   /// Logs an informational message.

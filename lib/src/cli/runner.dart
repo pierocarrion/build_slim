@@ -6,11 +6,20 @@ import 'report_command.dart';
 /// Entrypoint runner for the `build_slim` CLI.
 class BuildSlimRunner {
   /// Creates the runner.
-  BuildSlimRunner() {
+  ///
+  /// Tests may pass [optimizeCommand] and [reportCommand] to inject fake
+  /// dependencies or to capture log output via a sink.
+  BuildSlimRunner({
+    OptimizeCommand? optimizeCommand,
+    ReportCommand? reportCommand,
+    StringSink? commandSink,
+  }) : _commandSink = commandSink {
     _runner
-      ..addCommand(OptimizeCommand())
-      ..addCommand(ReportCommand());
+      ..addCommand(optimizeCommand ?? OptimizeCommand(loggerSink: _commandSink))
+      ..addCommand(reportCommand ?? ReportCommand(loggerSink: _commandSink));
   }
+
+  final StringSink? _commandSink;
 
   final CommandRunner<int> _runner = CommandRunner<int>(
     'build_slim',

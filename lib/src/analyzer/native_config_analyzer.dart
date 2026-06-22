@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 
 import '../reporter/report_model.dart';
@@ -51,9 +52,9 @@ class NativeConfigAnalyzer {
     }
     logger.verbose('Auditing native Android config: $gradlePath');
 
-    final normalized = _normalizeGradle(gradleContent);
+    final normalized = normalizeGradle(gradleContent);
 
-    if (!_hasGradleBool(normalized, 'minifyEnabled', true)) {
+    if (!hasGradleBool(normalized, 'minifyEnabled', true)) {
       findings.add(const Finding(
         id: 'android_minify_disabled',
         severity: FindingSeverity.warning,
@@ -66,7 +67,7 @@ class NativeConfigAnalyzer {
       ));
     }
 
-    if (!_hasGradleBool(normalized, 'shrinkResources', true)) {
+    if (!hasGradleBool(normalized, 'shrinkResources', true)) {
       findings.add(const Finding(
         id: 'android_shrink_resources_disabled',
         severity: FindingSeverity.warning,
@@ -155,7 +156,7 @@ class NativeConfigAnalyzer {
         recommendation: 'Add an explicit platform :ios line to your Podfile.',
       ));
     } else {
-      final version = _parseVersion(versionString);
+      final version = parseVersion(versionString);
       if (version < 12.0) {
         findings.add(Finding(
           id: 'ios_deployment_target_low',
@@ -195,7 +196,8 @@ class NativeConfigAnalyzer {
 
   /// Normalizes Gradle-like content by removing comments and whitespace
   /// around equals signs so boolean checks are more robust.
-  String _normalizeGradle(String content) {
+  @visibleForTesting
+  String normalizeGradle(String content) {
     return content
         .replaceAll(RegExp(r'//.*'), '')
         .replaceAll(RegExp(r'/\*.*?\*/', multiLine: true, dotAll: true), '')
@@ -203,12 +205,16 @@ class NativeConfigAnalyzer {
         .replaceAll(RegExp(r'\s+'), ' ');
   }
 
-  bool _hasGradleBool(String content, String key, bool value) {
+  /// Returns true if [content] contains `key=value` after normalization.
+  @visibleForTesting
+  bool hasGradleBool(String content, String key, bool value) {
     final pattern = RegExp('$key=${value.toString()}');
     return pattern.hasMatch(content);
   }
 
-  double _parseVersion(String version) {
+  /// Parses [version] (e.g. `'12.0'`) into a comparable double.
+  @visibleForTesting
+  double parseVersion(String version) {
     final clean = version.split('-').first;
     final parts = clean.split('.').map(double.tryParse).toList();
     final major = parts.isNotEmpty ? (parts[0] ?? 0) : 0;

@@ -1,0 +1,102 @@
+import 'package:build_slim/src/builder/artifact_comparator.dart';
+import 'package:build_slim/src/optimizer/optimizer_pipeline.dart';
+import 'package:build_slim/src/reporter/report_model.dart';
+import 'package:build_slim/src/util/logger.dart';
+import 'package:build_slim/src/util/process_runner.dart';
+
+/// A fake [OptimizerPipeline] that records calls and returns a canned
+/// [OptimizationReport], or throws a [BuildOptimizerException] on demand.
+class FakeOptimizerPipeline extends OptimizerPipeline {
+  /// Creates a fake pipeline.
+  FakeOptimizerPipeline({
+    required this.report,
+    this.shouldThrow = false,
+  }) : super(
+          logger: Logger(level: LogLevel.none),
+          processRunner: _NoopProcessRunner(),
+        );
+
+  /// Report returned by [run].
+  final OptimizationReport report;
+
+  /// When true, [run] throws a [BuildOptimizerException].
+  final bool shouldThrow;
+
+  /// Last call arguments observed by [run], or null if never called.
+  PipelineCall? lastCall;
+
+  /// Number of times [run] was invoked.
+  int callCount = 0;
+
+  @override
+  Future<OptimizationReport> run({
+    required String projectDir,
+    required BuildTarget target,
+    String? flavor,
+    List<String> dartDefines = const [],
+    bool obfuscate = false,
+    bool treeShakeIcons = false,
+    bool analyzeOnly = false,
+  }) async {
+    callCount++;
+    lastCall = PipelineCall(
+      projectDir: projectDir,
+      target: target,
+      flavor: flavor,
+      dartDefines: List<String>.unmodifiable(dartDefines),
+      obfuscate: obfuscate,
+      treeShakeIcons: treeShakeIcons,
+      analyzeOnly: analyzeOnly,
+    );
+    if (shouldThrow) {
+      throw const BuildOptimizerException('pipeline failure');
+    }
+    return report;
+  }
+}
+
+/// Snapshot of the arguments passed to [FakeOptimizerPipeline.run].
+class PipelineCall {
+  /// Creates a snapshot.
+  const PipelineCall({
+    required this.projectDir,
+    required this.target,
+    required this.flavor,
+    required this.dartDefines,
+    required this.obfuscate,
+    required this.treeShakeIcons,
+    required this.analyzeOnly,
+  });
+
+  /// Project dir.
+  final String projectDir;
+
+  /// Build target.
+  final BuildTarget target;
+
+  /// Optional flavor.
+  final String? flavor;
+
+  /// Dart defines.
+  final List<String> dartDefines;
+
+  /// Obfuscate flag.
+  final bool obfuscate;
+
+  /// Tree-shake-icons flag.
+  final bool treeShakeIcons;
+
+  /// Analyze-only flag.
+  final bool analyzeOnly;
+}
+
+class _NoopProcessRunner implements ProcessRunner {
+  @override
+  Future<ProcessResult> run(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+  }) async {
+    return const ProcessResult(exitCode: 0, stdout: '', stderr: '');
+  }
+}

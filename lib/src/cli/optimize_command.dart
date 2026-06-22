@@ -16,7 +16,14 @@ import '../util/process_runner.dart';
 /// The `optimize` command: analyze, optionally patch, build, and report.
 class OptimizeCommand extends Command<int> {
   /// Creates the optimize command and defines its flags.
-  OptimizeCommand() {
+  ///
+  /// Tests may inject [pipeline] and [loggerSink] to avoid real subprocesses
+  /// and to capture log output.
+  OptimizeCommand({
+    OptimizerPipeline? pipeline,
+    StringSink? loggerSink,
+  })  : _injectedPipeline = pipeline,
+        _loggerSink = loggerSink {
     argParser
       ..addOption(
         'target',
@@ -71,6 +78,9 @@ class OptimizeCommand extends Command<int> {
       );
   }
 
+  final OptimizerPipeline? _injectedPipeline;
+  final StringSink? _loggerSink;
+
   @override
   String get name => 'optimize';
 
@@ -82,15 +92,16 @@ class OptimizeCommand extends Command<int> {
   Future<int> run() async {
     final args = argResults!;
     final level = args.flag('verbose') ? LogLevel.verbose : LogLevel.info;
-    final logger = Logger(level: level);
+    final logger = Logger(level: level, sink: _loggerSink);
     final projectDir = p.absolute(args.option('project-dir')!);
 
     final target = BuildTarget.values.byName(args.option('target')!);
 
-    final pipeline = OptimizerPipeline(
-      logger: logger,
-      processRunner: const IOProcessRunner(),
-    );
+    final pipeline = _injectedPipeline ??
+        OptimizerPipeline(
+          logger: logger,
+          processRunner: const IOProcessRunner(),
+        );
 
     try {
       final report = await pipeline.run(

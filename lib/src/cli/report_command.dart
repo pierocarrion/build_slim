@@ -12,7 +12,14 @@ import '../util/logger.dart';
 /// The `report` command: compare two existing artifacts.
 class ReportCommand extends Command<int> {
   /// Creates the report command and defines its flags.
-  ReportCommand() {
+  ///
+  /// Tests may inject [comparator] and [loggerSink] to avoid real file IO and
+  /// to capture log output.
+  ReportCommand({
+    ArtifactComparator? comparator,
+    StringSink? loggerSink,
+  })  : _injectedComparator = comparator,
+        _loggerSink = loggerSink {
     argParser
       ..addOption(
         'before',
@@ -40,6 +47,9 @@ class ReportCommand extends Command<int> {
       );
   }
 
+  final ArtifactComparator? _injectedComparator;
+  final StringSink? _loggerSink;
+
   @override
   String get name => 'report';
 
@@ -51,7 +61,7 @@ class ReportCommand extends Command<int> {
   Future<int> run() async {
     final args = argResults!;
     final level = args.flag('verbose') ? LogLevel.verbose : LogLevel.info;
-    final logger = Logger(level: level);
+    final logger = Logger(level: level, sink: _loggerSink);
 
     final beforePath = args.option('before');
     final afterPath = args.option('after');
@@ -61,7 +71,7 @@ class ReportCommand extends Command<int> {
       return 1;
     }
 
-    const comparator = ArtifactComparator();
+    final comparator = _injectedComparator ?? const ArtifactComparator();
     final report = await comparator.compare(
       beforePath: beforePath,
       afterPath: afterPath,
