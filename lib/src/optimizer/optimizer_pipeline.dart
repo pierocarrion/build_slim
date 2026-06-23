@@ -8,6 +8,7 @@ import 'android_optimizer.dart';
 import 'asset_optimizer.dart';
 import 'dart_optimizer.dart';
 import 'ios_optimizer.dart';
+import 'signing_configurator.dart';
 
 /// Orchestrates analysis, patching, build, and report generation.
 class OptimizerPipeline {
@@ -32,6 +33,11 @@ class OptimizerPipeline {
     bool obfuscate = false,
     bool treeShakeIcons = false,
     bool analyzeOnly = false,
+    String? keystore,
+    String? storePassword,
+    String? keyAlias,
+    String? keyPassword,
+    bool debugSigning = false,
   }) async {
     logger.info('Analyzing project at $projectDir...');
     final analyzer = ProjectAnalyzer(projectDir: projectDir, logger: logger);
@@ -80,6 +86,26 @@ class OptimizerPipeline {
       processRunner: processRunner,
     );
     appliedOptimizations.addAll(await assetOptimizer.optimize());
+
+    // Resolve release signing for Android targets before building.
+    if (target == BuildTarget.apk || target == BuildTarget.aab) {
+      final signingConfigurator = SigningConfigurator(
+        projectDir: projectDir,
+        logger: logger,
+      );
+      final signingResult = await signingConfigurator.configure(
+        keystore: keystore,
+        storePassword: storePassword,
+        keyAlias: keyAlias,
+        keyPassword: keyPassword,
+        debugSigning: debugSigning,
+      );
+      if (signingResult.applied) {
+        appliedOptimizations.add(
+          'Signing: ${signingResult.reason ?? signingResult.action.name}',
+        );
+      }
+    }
 
     logger.info('Building $target...');
     final buildRunner = BuildRunner(

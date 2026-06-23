@@ -37,6 +37,11 @@ class FakeOptimizerPipeline extends OptimizerPipeline {
     bool obfuscate = false,
     bool treeShakeIcons = false,
     bool analyzeOnly = false,
+    String? keystore,
+    String? storePassword,
+    String? keyAlias,
+    String? keyPassword,
+    bool debugSigning = false,
   }) async {
     callCount++;
     lastCall = PipelineCall(
@@ -47,6 +52,11 @@ class FakeOptimizerPipeline extends OptimizerPipeline {
       obfuscate: obfuscate,
       treeShakeIcons: treeShakeIcons,
       analyzeOnly: analyzeOnly,
+      keystore: keystore,
+      storePassword: storePassword,
+      keyAlias: keyAlias,
+      keyPassword: keyPassword,
+      debugSigning: debugSigning,
     );
     if (shouldThrow) {
       throw const BuildOptimizerException('pipeline failure');
@@ -66,6 +76,11 @@ class PipelineCall {
     required this.obfuscate,
     required this.treeShakeIcons,
     required this.analyzeOnly,
+    this.keystore,
+    this.storePassword,
+    this.keyAlias,
+    this.keyPassword,
+    this.debugSigning = false,
   });
 
   /// Project dir.
@@ -88,6 +103,21 @@ class PipelineCall {
 
   /// Analyze-only flag.
   final bool analyzeOnly;
+
+  /// Keystore path passed via --keystore, if any.
+  final String? keystore;
+
+  /// Store password passed via --store-password, if any.
+  final String? storePassword;
+
+  /// Key alias passed via --key-alias, if any.
+  final String? keyAlias;
+
+  /// Key password passed via --key-password, if any.
+  final String? keyPassword;
+
+  /// Whether debug signing was requested.
+  final bool debugSigning;
 }
 
 class _NoopProcessRunner implements ProcessRunner {

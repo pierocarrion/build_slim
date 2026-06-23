@@ -61,6 +61,31 @@ class OptimizeCommand extends Command<int> {
         help: 'Audit without building.',
       )
       ..addOption(
+        'keystore',
+        help: 'Path to the release keystore (.jks/.keystore). When provided, '
+            'android/key.properties is generated from the credentials below.',
+      )
+      ..addOption(
+        'store-password',
+        help: 'Password for the keystore file (use with --keystore).',
+      )
+      ..addOption(
+        'key-alias',
+        help: 'Alias of the key inside the keystore (use with --keystore).',
+      )
+      ..addOption(
+        'key-password',
+        help: 'Password for the key (use with --keystore).',
+      )
+      ..addOption(
+        'signing-config',
+        allowed: const ['debug', 'none'],
+        defaultsTo: 'none',
+        help: 'Set to "debug" to temporarily sign the release build with the '
+            'debug keystore (validation only; do NOT publish). "none" leaves '
+            'signing resolution to the standard key.properties flow.',
+      )
+      ..addOption(
         'report',
         defaultsTo: 'console',
         allowed: const ['console', 'json', 'html'],
@@ -112,6 +137,11 @@ class OptimizeCommand extends Command<int> {
         obfuscate: args.flag('obfuscate'),
         treeShakeIcons: args.flag('tree-shake-icons'),
         analyzeOnly: args.flag('analyze-only'),
+        keystore: args.option('keystore'),
+        storePassword: args.option('store-password'),
+        keyAlias: args.option('key-alias'),
+        keyPassword: args.option('key-password'),
+        debugSigning: args.option('signing-config') == 'debug',
       );
 
       final format = args.option('report')!;

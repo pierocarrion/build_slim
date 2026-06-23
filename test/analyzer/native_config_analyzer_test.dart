@@ -201,6 +201,42 @@ void main() {
       expect(findings, isEmpty);
     });
 
+    test('recognizes Kotlin is-prefixed property names as enabled', () async {
+      await writeAndroidFile('''
+        release {
+          isMinifyEnabled = true
+          isShrinkResources = true
+          abiFilters 'arm64-v8a'
+        }
+      ''', filename: 'build.gradle.kts');
+
+      final analyzer = NativeConfigAnalyzer(
+          projectDir: tempDir.path, logger: Logger(level: LogLevel.none));
+      final findings = await analyzer.analyze();
+
+      final ids = findings.map((f) => f.id).toSet();
+      expect(ids, isNot(contains('android_minify_disabled')));
+      expect(ids, isNot(contains('android_shrink_resources_disabled')));
+    });
+
+    test('flags is-prefixed properties when set to false', () async {
+      await writeAndroidFile('''
+        release {
+          isMinifyEnabled = false
+          isShrinkResources = false
+          abiFilters 'arm64-v8a'
+        }
+      ''', filename: 'build.gradle.kts');
+
+      final analyzer = NativeConfigAnalyzer(
+          projectDir: tempDir.path, logger: Logger(level: LogLevel.none));
+      final findings = await analyzer.analyze();
+      final ids = findings.map((f) => f.id).toSet();
+
+      expect(ids, contains('android_minify_disabled'));
+      expect(ids, contains('android_shrink_resources_disabled'));
+    });
+
     // Pins the current Groovy-syntax limitation: when `minifyEnabled true` is
     // written without an explicit `=`, the analyzer treats it as disabled.
     test('treats Groovy `minifyEnabled true` (no `=`) as disabled (pinned bug)',

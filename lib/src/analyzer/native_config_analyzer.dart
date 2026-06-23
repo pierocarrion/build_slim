@@ -206,9 +206,14 @@ class NativeConfigAnalyzer {
   }
 
   /// Returns true if [content] contains `key=value` after normalization.
+  ///
+  /// Accepts both the Groovy form (`minifyEnabled=true`) and the Kotlin DSL
+  /// form (`isMinifyEnabled=true`). A word boundary prevents matching the key
+  /// as a substring of an unrelated identifier.
   @visibleForTesting
   bool hasGradleBool(String content, String key, bool value) {
-    final pattern = RegExp('$key=${value.toString()}');
+    final v = value.toString();
+    final pattern = RegExp('\\b(?:is)?$key\\b\\s*=\\s*$v', caseSensitive: false);
     return pattern.hasMatch(content);
   }
 

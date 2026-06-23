@@ -82,6 +82,142 @@ android {
     });
   });
 
+  group('AndroidOptimizer patches Kotlin build.gradle.kts', () {
+    setUp(() async {
+      tempDir =
+          await Directory.systemTemp.createTemp('android_optimizer_kotlin_');
+    });
+
+    tearDown(() async {
+      await tempDir.delete(recursive: true);
+    });
+
+    test('emits is-prefixed property names and listOf abiFilters', () async {
+      await writeGradle('''
+android {
+    defaultConfig {
+        applicationId = "com.example.test"
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+    }
+}
+''', filename: 'build.gradle.kts');
+
+      final applied = await runOptimizer();
+      expect(applied, isNotEmpty);
+
+      final content = await File(
+        p.join(tempDir.path, 'android', 'app', 'build.gradle.kts'),
+      ).readAsString();
+      expect(content, contains('isMinifyEnabled = true'));
+      expect(content, contains('isShrinkResources = true'));
+      expect(
+        content,
+        contains('abiFilters += listOf("arm64-v8a", "armeabi-v7a")'),
+      );
+      // Regression guards: never emit Groovy-style names or list literals.
+      expect(content, isNot(contains('isminifyEnabled')));
+      expect(content, isNot(contains("['arm64-v8a'")));
+      expect(content, isNot(contains('abiFilters.addAll')));
+    });
+
+    test('scopes edits to release and leaves a preceding debug block alone',
+        () async {
+      await writeGradle('''
+android {
+    buildTypes {
+        debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+        release {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+    }
+}
+''', filename: 'build.gradle.kts');
+
+      await runOptimizer();
+
+      final content = await File(
+        p.join(tempDir.path, 'android', 'app', 'build.gradle.kts'),
+      ).readAsString();
+
+      // The release block must be enabled...
+      final releaseStart = content.indexOf('release {');
+      final debugStart = content.indexOf('debug {');
+      expect(releaseStart, greaterThan(-1));
+      expect(debugStart, greaterThan(-1));
+
+      final releaseSlice = content.substring(releaseStart);
+      expect(releaseSlice, contains('isMinifyEnabled = true'));
+      expect(releaseSlice, contains('isShrinkResources = true'));
+
+      // ...while the debug block (which appears first) stays disabled.
+      final debugSlice =
+          content.substring(debugStart, content.indexOf('release {'));
+      expect(debugSlice, contains('isMinifyEnabled = false'));
+      expect(debugSlice, contains('isShrinkResources = false'));
+    });
+
+    test('repairs previously corrupted isminifyEnabled casing', () async {
+      await writeGradle('''
+android {
+    buildTypes {
+        release {
+            isminifyEnabled = true
+            isshrinkResources = true
+        }
+    }
+}
+''', filename: 'build.gradle.kts');
+
+      await runOptimizer();
+
+      final content = await File(
+        p.join(tempDir.path, 'android', 'app', 'build.gradle.kts'),
+      ).readAsString();
+      expect(content, contains('isMinifyEnabled = true'));
+      expect(content, contains('isShrinkResources = true'));
+      expect(content, isNot(contains('isminifyEnabled')));
+      expect(content, isNot(contains('isshrinkResources')));
+    });
+
+    test('is idempotent on Kotlin DSL', () async {
+      await writeGradle('''
+android {
+    defaultConfig { }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+}
+''', filename: 'build.gradle.kts');
+
+      await runOptimizer();
+      final afterFirst = await File(
+        p.join(tempDir.path, 'android', 'app', 'build.gradle.kts'),
+      ).readAsString();
+      final firstMinify =
+          'isMinifyEnabled'.allMatches(afterFirst).length;
+
+      await runOptimizer();
+      final afterSecond = await File(
+        p.join(tempDir.path, 'android', 'app', 'build.gradle.kts'),
+      ).readAsString();
+      final secondMinify =
+          'isMinifyEnabled'.allMatches(afterSecond).length;
+
+      expect(secondMinify, firstMinify);
+    });
+  });
+
   group('AndroidOptimizer idempotency', () {
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('android_idempotency_');
@@ -235,8 +371,10 @@ android {
       expect(gradle.existsSync(), isTrue);
       final content = await gradle.readAsString();
       expect(applied, isNotEmpty);
-      // Kotlin DSL uses addAll syntax.
-      expect(content, contains('abiFilters.addAll'));
+      // Kotlin DSL uses the is-prefixed property names and listOf syntax.
+      expect(content, contains('isMinifyEnabled = true'));
+      expect(content, contains('isShrinkResources = true'));
+      expect(content, contains('abiFilters += listOf("arm64-v8a", "armeabi-v7a")'));
     });
   });
 }

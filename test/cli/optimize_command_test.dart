@@ -107,6 +107,32 @@ void main() {
       expect(pipeline.lastCall!.analyzeOnly, isTrue);
     });
 
+    test('passes signing credentials to the pipeline', () async {
+      await runner.run([
+        'optimize',
+        '--keystore', '/path/to/upload.jks',
+        '--store-password', 'sp',
+        '--key-alias', 'alias',
+        '--key-password', 'kp',
+      ]);
+      final call = pipeline.lastCall!;
+      expect(call.keystore, '/path/to/upload.jks');
+      expect(call.storePassword, 'sp');
+      expect(call.keyAlias, 'alias');
+      expect(call.keyPassword, 'kp');
+      expect(call.debugSigning, isFalse);
+    });
+
+    test('passes --signing-config debug as debugSigning=true', () async {
+      await runner.run(['optimize', '--signing-config', 'debug']);
+      expect(pipeline.lastCall!.debugSigning, isTrue);
+    });
+
+    test('defaults --signing-config to none (debugSigning=false)', () async {
+      await runner.run(['optimize']);
+      expect(pipeline.lastCall!.debugSigning, isFalse);
+    });
+
     test('resolves --project-dir to an absolute path', () async {
       await runner.run(['optimize', '--project-dir', '.']);
       final projectDir = pipeline.lastCall!.projectDir;

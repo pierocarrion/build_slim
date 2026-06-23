@@ -27,7 +27,7 @@ A CLI tool and library to analyze and reduce the size of Flutter **APK**, **AAB*
 | Area | Auto-fixes | Recommends manually |
 |------|------------|---------------------|
 | Dart build flags | Injects `--tree-shake-icons`, `--obfuscate`, `--split-debug-info` | Guards around debug-only code |
-| Android | Patches `build.gradle` settings, creates ProGuard rules | Native code / plugin size tuning |
+| Android | Patches `build.gradle(.kts)` settings (Groovy and Kotlin DSL), creates ProGuard rules, resolves release signing | Native code / plugin size tuning |
 | iOS | Injects safe `.xcconfig` settings | Xcode `.pbxproj` setting changes |
 | Assets | Compresses PNG/JPEG/WebP if tools are installed | Removing unused assets |
 | Dependencies | — | Lighter alternatives, deferred loading |
@@ -87,6 +87,11 @@ build_slim report --before ./app-before.apk --after ./app-after.apk --format htm
 | `--obfuscate` | `false` | Enable Dart obfuscation and split debug info. |
 | `--tree-shake-icons` | `false` | Remove unused Material icons. |
 | `--analyze-only` | `false` | Audit without running a build. |
+| `--keystore` | — | Path to the release keystore (`.jks`/`.keystore`). When set, `android/key.properties` is generated from the credentials below. |
+| `--store-password` | — | Password for the keystore file (use with `--keystore`). |
+| `--key-alias` | — | Alias of the key inside the keystore (use with `--keystore`). |
+| `--key-password` | — | Password for the key (use with `--keystore`). |
+| `--signing-config` | `none` | `debug` temporarily signs the release build with the debug keystore (validation only — do NOT publish). |
 | `--report` | `console` | Output format: `console`, `json`, or `html`. |
 | `--report-output` | — | File path to write the report. |
 | `--verbose` | `false` | Verbose logging. |
@@ -110,6 +115,36 @@ build_slim report --before ./app-before.apk --after ./app-after.apk --format htm
 | SwiftUI-integrated app (IPA) | 24.0 MB | 19.5 MB | 18.8 % |
 
 Results depend on your code, assets, dependencies, and target platform.
+
+## Release signing (Android)
+
+When `build_slim optimize` runs a release build for an Android target (`apk` or
+`aab`) and your project follows the standard `android/key.properties` signing
+pattern, it resolves signing before building — no interactive prompt, so it
+works identically in CI and on your laptop.
+
+Resolution order:
+
+1. `android/key.properties` already exists → nothing to do.
+2. `--keystore` plus `--store-password`, `--key-alias`, and `--key-password` all
+   provided → `android/key.properties` is generated (the keystore path is stored
+   absolute). The tool warns if `key.properties` is not in your `.gitignore`.
+3. `--signing-config debug` → the `release` build type is temporarily wired to
+   the debug signing config (a `.bak` backup is created). Use this only for
+   validation; the resulting artifact must not be published.
+4. None of the above → the build fails fast with actionable guidance.
+
+```bash
+# Generate key.properties from a keystore you already have
+build_slim optimize --target apk \
+  --keystore ~/keystores/upload.jks \
+  --store-password "$STORE_PW" \
+  --key-alias upload \
+  --key-password "$KEY_PW"
+
+# Or validate with debug signing (no keystore needed)
+build_slim optimize --target apk --signing-config debug
+```
 
 ## Contributing
 

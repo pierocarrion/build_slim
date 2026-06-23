@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-22
+
+### Fixed
+- Android optimizer now emits correct Kotlin DSL when patching
+  `build.gradle.kts`. Previously it injected Groovy syntax (`['arm64-v8a', ...]`
+  list literals, `abiFilters.addAll(...)`, and bare `minifyEnabled`/`
+  shrinkResources`) that failed to compile under the Kotlin DSL.
+  - `abiFilters` now uses `ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }`.
+  - Property names use the `is` prefix (`isMinifyEnabled`, `isShrinkResources`).
+  - Release-only scoping: edits are confined to the `release { ... }` build type
+    via brace matching, so a preceding `debug {}` block is never mutated.
+  - Word-boundary matching prevents the substring corruption that produced
+    invalid identifiers like `isminifyEnabled`. Re-running the optimizer also
+    repairs files corrupted by previous versions.
+- `NativeConfigAnalyzer.hasGradleBool` now recognizes the Kotlin `is`-prefixed
+  property form (`isMinifyEnabled = true`) so analyze and optimize agree.
+
+### Added
+- Release signing resolution for Android targets (`apk`, `aab`) via a new
+  `SigningConfigurator`. Follows the standard `android/key.properties` pattern
+  with a deterministic, flag-driven flow (no interactive prompt — CI friendly).
+  - `--keystore`, `--store-password`, `--key-alias`, `--key-password` generate
+    `android/key.properties` from a keystore.
+  - `--signing-config debug` temporarily signs the release build with the debug
+    keystore (validation only) and creates a `.bak` backup.
+  - Warns when `key.properties` is not covered by `.gitignore`.
+  - Fails fast with actionable guidance when signing is unresolved.
+
+### Changed
+- `OptimizerPipeline.run` and `FakeOptimizerPipeline.run` accept the new signing
+  parameters (`keystore`, `storePassword`, `keyAlias`, `keyPassword`,
+  `debugSigning`). Callers that override `run` must add the new parameters.
+- Android optimizer applies patches to whichever Gradle file was found and names
+  it explicitly in the applied-optimizations message.
+
 ## [0.2.0] - 2026-06-21
 
 ### Added
@@ -51,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Console, JSON, and HTML reporters.
 - Comprehensive unit tests and fixture project for analyzers.
 
+[0.3.0]: https://github.com/pierocarrion/build_slim/releases/tag/v0.3.0
 [0.2.0]: https://github.com/pierocarrion/build_slim/releases/tag/v0.2.0
 [0.1.1]: https://github.com/pierocarrion/build_slim/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pierocarrion/build_slim/releases/tag/v0.1.0
