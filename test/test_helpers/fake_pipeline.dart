@@ -37,6 +37,8 @@ class FakeOptimizerPipeline extends OptimizerPipeline {
     bool obfuscate = false,
     bool treeShakeIcons = false,
     bool analyzeOnly = false,
+    bool aggressive = false,
+    List<String> locales = const [],
     String? keystore,
     String? storePassword,
     String? keyAlias,
@@ -52,6 +54,8 @@ class FakeOptimizerPipeline extends OptimizerPipeline {
       obfuscate: obfuscate,
       treeShakeIcons: treeShakeIcons,
       analyzeOnly: analyzeOnly,
+      aggressive: aggressive,
+      locales: List<String>.unmodifiable(locales),
       keystore: keystore,
       storePassword: storePassword,
       keyAlias: keyAlias,
@@ -76,6 +80,8 @@ class PipelineCall {
     required this.obfuscate,
     required this.treeShakeIcons,
     required this.analyzeOnly,
+    required this.aggressive,
+    required this.locales,
     this.keystore,
     this.storePassword,
     this.keyAlias,
@@ -103,6 +109,12 @@ class PipelineCall {
 
   /// Analyze-only flag.
   final bool analyzeOnly;
+
+  /// Aggressive optimizations flag.
+  final bool aggressive;
+
+  /// Locales override passed via --locales.
+  final List<String> locales;
 
   /// Keystore path passed via --keystore, if any.
   final String? keystore;

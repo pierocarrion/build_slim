@@ -18,19 +18,23 @@ A CLI tool and library to analyze and reduce the size of Flutter **APK**, **AAB*
 - Unused assets/fonts declared in `pubspec.yaml`.
 - Heavy or duplicate dependencies from `pubspec.lock`.
 - Missing Dart build flags: `--tree-shake-icons`, `--obfuscate`, `--split-debug-info`.
-- Android Gradle settings: `minifyEnabled`, `shrinkResources`, `abiFilters`, `extractNativeLibs`.
+- Android Gradle settings: `minifyEnabled`, `shrinkResources`, `abiFilters`, `extractNativeLibs`, R8 full mode.
 - iOS Xcode settings: bitcode, dead-code stripping, Swift size optimization, deployment target.
 - General Dart patterns: `dart:mirrors`, unguarded `print()` calls, missing image caching.
+- Heavy GIF assets (>300KB) — recommends Lottie/Rive.
+- Large font files (>200KB) — recommends font subsetting.
+- Heavy packages imported eagerly — recommends Dart deferred imports.
+- Target-aware native library guidance (AAB vs APK).
 
 ## What it auto-fixes vs. recommends
 
-| Area | Auto-fixes | Recommends manually |
-|------|------------|---------------------|
-| Dart build flags | Injects `--tree-shake-icons`, `--obfuscate`, `--split-debug-info` | Guards around debug-only code |
-| Android | Patches `build.gradle(.kts)` settings (Groovy and Kotlin DSL), creates ProGuard rules, resolves release signing | Native code / plugin size tuning |
-| iOS | Injects safe `.xcconfig` settings | Xcode `.pbxproj` setting changes |
-| Assets | Compresses PNG/JPEG/WebP if tools are installed | Removing unused assets |
-| Dependencies | — | Lighter alternatives, deferred loading |
+| Area | Auto-fixes (safe) | Auto-fixes (`--aggressive`) | Recommends manually |
+|------|-------------------|------------------------------|---------------------|
+| Dart build flags | Injects `--tree-shake-icons`, `--obfuscate`, `--split-debug-info` | — | Guards around debug-only code |
+| Android | Patches `build.gradle(.kts)` (Groovy + Kotlin DSL), `resConfigs` (locales), ProGuard rules, release signing | R8 full mode, strict `keep.xml` shrink mode | Native code / plugin tuning |
+| iOS | Injects safe `.xcconfig` settings | — | Xcode `.pbxproj` setting changes |
+| Assets | Compresses PNG/JPEG/WebP if tools installed | PNG/JPEG → WebP conversion + reference rewrite | Removing unused assets |
+| Dependencies | — | — | Lighter alternatives, deferred loading, font subsetting |
 
 ## Installation
 
@@ -61,11 +65,20 @@ build_slim optimize
 ## Quick start
 
 ```bash
-# Analyze only (no build)
+# Analyze only (no build) — safe, read-only audit
 build_slim optimize --analyze-only
 
-# Build an optimized APK
+# Build an optimized APK (safe defaults)
 build_slim optimize --target apk
+
+# Build an optimized AAB with auto-detected locales
+build_slim optimize --target aab
+
+# Aggressive mode: PNG→WebP, R8 full mode, strict shrink (with .bak backups)
+build_slim optimize --target aab --aggressive
+
+# Override auto-detected locales for resConfigs
+build_slim optimize --target aab --locales en --locales es --locales pt
 
 # Build an optimized IPA (macOS only)
 build_slim optimize --target ipa
@@ -87,6 +100,8 @@ build_slim report --before ./app-before.apk --after ./app-after.apk --format htm
 | `--obfuscate` | `false` | Enable Dart obfuscation and split debug info. |
 | `--tree-shake-icons` | `false` | Remove unused Material icons. |
 | `--analyze-only` | `false` | Audit without running a build. |
+| `--aggressive` | `false` | Enable destructive optimizations (PNG→WebP, R8 full mode, strict shrink). Creates `.bak` backups; review before publishing. |
+| `--locales` | auto-detected | Override the locales injected as Android `resConfigs`. Repeatable: `--locales en --locales es`. Auto-detected from `*.arb` / `.lproj` when omitted. |
 | `--keystore` | — | Path to the release keystore (`.jks`/`.keystore`). When set, `android/key.properties` is generated from the credentials below. |
 | `--store-password` | — | Password for the keystore file (use with `--keystore`). |
 | `--key-alias` | — | Alias of the key inside the keystore (use with `--keystore`). |
@@ -95,6 +110,18 @@ build_slim report --before ./app-before.apk --after ./app-after.apk --format htm
 | `--report` | `console` | Output format: `console`, `json`, or `html`. |
 | `--report-output` | — | File path to write the report. |
 | `--verbose` | `false` | Verbose logging. |
+
+### Safety guarantees
+
+- **Backups everywhere**: every file modified by an optimizer is first copied
+  to `<filename>.bak` (only the first time, so re-runs preserve your original).
+- **Never overwrites hand-tuned config**: `resConfigs`, `keep.xml`, and
+  `proguard-rules.pro` are left untouched if they already exist.
+- **Atomic WebP conversion**: if any `cwebp` invocation fails, references in
+  `lib/` and `pubspec.yaml` are not rewritten and original assets are preserved.
+- **`--aggressive` is opt-in**: without it, the tool only applies the
+  historically-safe optimizations. Run `--analyze-only` first to preview
+  findings (including breaking ones, flagged with a `[breaking]` badge).
 
 ### `build_slim report`
 

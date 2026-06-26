@@ -76,6 +76,8 @@ class DependencyAnalyzer {
       }
     }
 
+    findings.addAll(_findNonDeferredHeavyImports(packageNames));
+
     for (final groupName in _duplicateGroups.keys) {
       final group = _duplicateGroups[groupName]!;
       final present = group.where(packageNames.contains).toList();
@@ -99,5 +101,76 @@ class DependencyAnalyzer {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  /// Scans `lib/` for non-deferred imports of known heavy packages and emits a
+  /// finding per candidate suggesting `import ... deferred as ...`.
+  ///
+  /// Deferred imports ship the referenced code in a separate split asset that
+  /// Android App Bundles can deliver on demand, reducing initial download size.
+  List<Finding> _findNonDeferredHeavyImports(Set<String> packages) {
+    final findings = <Finding>[];
+    final libDir = Directory(p.join(projectDir, 'lib'));
+    if (!libDir.existsSync()) return findings;
+
+    final heavyInProject =
+        _knownHeavyPackages.keys.where(packages.contains).toSet();
+    if (heavyInProject.isEmpty) return findings;
+
+    // Pattern: `import 'package:NAME/...';`. Uses a normal (non-raw) string so
+    // both quote styles can appear inside the character class via escapes.
+    final importPattern = RegExp(
+      "import\\s+['\"]package:([a-z_][a-z0-9_]*)/",
+    );
+
+    final nonDeferredCandidates = <String>{};
+    void walk(File file, String content) {
+      // Find all import statements and check if `deferred` appears on the
+      // same logical import. We approximate by scanning line-by-line, since
+      // Dart imports are single-statement.
+      for (final line in content.split('\n')) {
+        final trimmed = line.trim();
+        if (!trimmed.startsWith('import ')) continue;
+        if (trimmed.contains('deferred as')) continue;
+        final match = importPattern.firstMatch(trimmed);
+        if (match == null) continue;
+        final pkg = match.group(1);
+        if (pkg != null && heavyInProject.contains(pkg)) {
+          nonDeferredCandidates.add(pkg);
+        }
+      }
+    }
+
+    try {
+      for (final entity
+          in libDir.listSync(recursive: true, followLinks: false)) {
+        if (entity is! File) continue;
+        if (!entity.path.endsWith('.dart')) continue;
+        try {
+          walk(entity, entity.readAsStringSync());
+        } on FileSystemException catch (e) {
+          // A single unreadable file must not abort the whole audit.
+          logger.verbose('Skipping ${entity.path} during deferred audit: $e');
+        }
+      }
+    } on FileSystemException catch (e) {
+      logger.verbose('Could not walk lib/ for deferred import audit: $e');
+      return findings;
+    }
+
+    for (final pkg in nonDeferredCandidates) {
+      findings.add(Finding(
+        id: 'deferred_candidate_$pkg',
+        severity: FindingSeverity.info,
+        title: 'Consider deferred import for $pkg',
+        description: '$pkg is imported eagerly in lib/. It is flagged as '
+            'heavy, so loading it lazily could reduce initial artifact size.',
+        recommendation: "Use `import 'package:$pkg/$pkg.dart' deferred as "
+            '$pkg;` then `await $pkg.loadLibrary();` before first use. '
+            'Android App Bundles deliver deferred code as a separate split.',
+      ));
+    }
+
+    return findings;
   }
 }

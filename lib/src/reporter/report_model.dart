@@ -5,6 +5,10 @@ enum FindingSeverity {
   /// An issue that prevents optimization or is likely to cause build failures.
   error,
 
+  /// A high-priority issue with significant impact (e.g. large media assets).
+  /// Rendered above [warning] but below [error].
+  critical,
+
   /// A suboptimal configuration that should be addressed.
   warning,
 
@@ -35,6 +39,7 @@ class Finding {
     required this.description,
     this.recommendation,
     this.estimatedSavingsBytes,
+    this.breaking = false,
   });
 
   /// Stable identifier used for grouping and test assertions.
@@ -55,6 +60,12 @@ class Finding {
   /// Optional estimated byte savings if the finding is addressed.
   final int? estimatedSavingsBytes;
 
+  /// Whether addressing this finding may break the build at runtime.
+  ///
+  /// Used by reporters to render a warning badge so users know to review the
+  /// change carefully before publishing (e.g. R8 full mode, strict shrink).
+  final bool breaking;
+
   /// Serializes this finding to JSON.
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
@@ -64,6 +75,7 @@ class Finding {
         if (recommendation != null) 'recommendation': recommendation,
         if (estimatedSavingsBytes != null)
           'estimatedSavingsBytes': estimatedSavingsBytes,
+        if (breaking) 'breaking': breaking,
       };
 }
 

@@ -179,4 +179,44 @@ void main() {
       expect(out, isNot(contains('Before:')));
     });
   });
+
+  group('ConsoleReporter severity and breaking badge', () {
+    test('renders critical severity', () {
+      final out = reporter.render(makeReport(findings: const [
+        Finding(
+          id: 'heavy_gif',
+          severity: FindingSeverity.critical,
+          title: 'Heavy GIF',
+          description: 'desc',
+        ),
+      ]));
+      expect(out, contains('critical'));
+      expect(out, contains('Heavy GIF'));
+    });
+
+    test('renders breaking badge when finding is breaking', () {
+      final out = reporter.render(makeReport(findings: const [
+        Finding(
+          id: 'android_r8_full_mode_disabled',
+          severity: FindingSeverity.warning,
+          title: 'R8 full mode disabled',
+          description: 'desc',
+          breaking: true,
+        ),
+      ]));
+      expect(out, contains('[breaking]'));
+    });
+
+    test('omits breaking badge when finding is not breaking', () {
+      final out = reporter.render(makeReport(findings: const [
+        Finding(
+          id: 'benign',
+          severity: FindingSeverity.warning,
+          title: 'Benign',
+          description: 'desc',
+        ),
+      ]));
+      expect(out, isNot(contains('[breaking]')));
+    });
+  });
 }

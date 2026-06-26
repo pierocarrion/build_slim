@@ -51,10 +51,13 @@ class ConsoleReporter implements Reporter {
         final savings = finding.estimatedSavingsBytes == null
             ? ''
             : ' (~${FileSizeUtil.format(finding.estimatedSavingsBytes!)} saved)';
+        final breakingBadge = finding.breaking
+            ? ' ${AnsiStyles.bgYellow(AnsiStyles.black('[breaking]'))}'
+            : '';
         buffer.writeln(
           '${finding.id.padRight(28)} '
           '${_severityLabel(finding.severity).padRight(10)} '
-          '$icon ${finding.title}$savings',
+          '$icon ${finding.title}$savings$breakingBadge',
         );
         buffer.writeln('    ${AnsiStyles.gray(finding.description)}');
         if (finding.recommendation != null) {
@@ -87,12 +90,14 @@ class ConsoleReporter implements Reporter {
 
   String _severityIcon(FindingSeverity severity) => switch (severity) {
         FindingSeverity.error => AnsiStyles.red('✖'),
+        FindingSeverity.critical => AnsiStyles.redBright('✖'),
         FindingSeverity.warning => AnsiStyles.yellow('⚠'),
         FindingSeverity.info => AnsiStyles.blue('ℹ'),
       };
 
   String _severityLabel(FindingSeverity severity) => switch (severity) {
         FindingSeverity.error => AnsiStyles.red('error'),
+        FindingSeverity.critical => AnsiStyles.redBright('critical'),
         FindingSeverity.warning => AnsiStyles.yellow('warning'),
         FindingSeverity.info => AnsiStyles.blue('info'),
       };

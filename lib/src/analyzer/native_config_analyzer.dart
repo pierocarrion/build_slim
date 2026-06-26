@@ -12,6 +12,7 @@ class NativeConfigAnalyzer {
   NativeConfigAnalyzer({
     required this.projectDir,
     required this.logger,
+    this.target,
   });
 
   /// Root directory of the Flutter project.
@@ -20,11 +21,17 @@ class NativeConfigAnalyzer {
   /// Logger for diagnostic output.
   final Logger logger;
 
+  /// Build target, used to emit target-aware findings (e.g. extractNativeLibs
+  /// guidance differs between APK and AAB). When null, neutral behavior is
+  /// preserved for backwards compatibility.
+  final BuildTarget? target;
+
   /// Analyzes Android and iOS native configuration and returns findings.
   Future<List<Finding>> analyze() async {
     final findings = <Finding>[];
     findings.addAll(await _analyzeAndroid());
     findings.addAll(await _analyzeIos());
+    findings.addAll(await _analyzeR8FullMode());
     return findings;
   }
 
@@ -111,7 +118,25 @@ class NativeConfigAnalyzer {
         ).firstMatch(manifestContent);
         if (applicationMatch != null) {
           final attrs = applicationMatch.group(1) ?? '';
-          if (attrs.contains('android:extractNativeLibs="false"')) {
+          final hasExtractFalse =
+              attrs.contains('android:extractNativeLibs="false"');
+          // Target-aware guidance. For AAB, Google Play requires uncompressed
+          // native libs (extractNativeLibs=false) to reduce install size. For
+          // APK / unknown target, preserve the legacy warning that flags the
+          // setting as a potential install-size penalty on older devices.
+          if (target == BuildTarget.aab && !hasExtractFalse) {
+            findings.add(const Finding(
+              id: 'android_extract_native_libs_should_be_false',
+              severity: FindingSeverity.warning,
+              title: 'extractNativeLibs should be false for AAB',
+              description: 'Google Play serves App Bundles with uncompressed '
+                  'native libraries to reduce on-device install size. Your '
+                  'manifest does not set extractNativeLibs="false".',
+              recommendation: 'Add android:extractNativeLibs="false" to the '
+                  '<application> tag in AndroidManifest.xml (requires '
+                  'minSdkVersion >= 23).',
+            ));
+          } else if (target != BuildTarget.aab && hasExtractFalse) {
             findings.add(const Finding(
               id: 'android_extract_native_libs_false',
               severity: FindingSeverity.warning,
@@ -128,6 +153,50 @@ class NativeConfigAnalyzer {
       }
     }
 
+    return findings;
+  }
+
+  /// Detects whether `android.enableR8.fullMode=true` is set in
+  /// `android/gradle.properties`. R8 full mode removes more unreachable code
+  /// than the default safe mode. Runs independently of build.gradle since the
+  /// flag lives in gradle.properties.
+  Future<List<Finding>> _analyzeR8FullMode() async {
+    final findings = <Finding>[];
+    final file = File(p.join(projectDir, 'android', 'gradle.properties'));
+    if (!file.existsSync()) return findings;
+
+    try {
+      final content = await file.readAsString();
+      // Strip comment lines (# ...) so a commented-out flag does not count
+      // as present. Anchor to line start with multiline mode.
+      final stripped = content.split('\n').where((l) {
+        final t = l.trim();
+        return t.isNotEmpty && !t.startsWith('#');
+      }).join('\n');
+      final hasFlag = RegExp(
+        r'^\s*android\.enableR8\.fullMode\s*=\s*true\s*$',
+        caseSensitive: false,
+        multiLine: true,
+      ).hasMatch(stripped);
+      if (!hasFlag) {
+        findings.add(const Finding(
+          id: 'android_r8_full_mode_disabled',
+          severity: FindingSeverity.warning,
+          breaking: true,
+          title: 'R8 full mode is not enabled',
+          description: 'R8 full mode performs substantially more aggressive '
+              'removal of unreachable code, typically saving 1-3 MB on '
+              'release artifacts. It may break code that relies on reflection '
+              'without ProGuard keep rules.',
+          recommendation: 'Add `android.enableR8.fullMode=true` to '
+              'android/gradle.properties (run with --aggressive to apply '
+              'automatically with a .bak backup).',
+          estimatedSavingsBytes: 2 * 1024 * 1024,
+        ));
+      }
+    } on FileSystemException catch (e) {
+      logger.verbose('Could not read gradle.properties: ${e.message}');
+    }
     return findings;
   }
 
@@ -213,7 +282,8 @@ class NativeConfigAnalyzer {
   @visibleForTesting
   bool hasGradleBool(String content, String key, bool value) {
     final v = value.toString();
-    final pattern = RegExp('\\b(?:is)?$key\\b\\s*=\\s*$v', caseSensitive: false);
+    final pattern =
+        RegExp('\\b(?:is)?$key\\b\\s*=\\s*$v', caseSensitive: false);
     return pattern.hasMatch(content);
   }
 

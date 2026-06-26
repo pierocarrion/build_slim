@@ -60,6 +60,19 @@ class OptimizeCommand extends Command<int> {
         defaultsTo: false,
         help: 'Audit without building.',
       )
+      ..addFlag(
+        'aggressive',
+        defaultsTo: false,
+        help: 'Enable destructive size optimizations (PNG→WebP conversion, '
+            'R8 full mode, strict resource shrinking). Creates .bak backups '
+            'of every modified file. Review changes before publishing.',
+      )
+      ..addMultiOption(
+        'locales',
+        help: 'Override the auto-detected supported locales (BCP-47 codes) '
+            'injected as Android resConfigs, e.g. --locales en --locales es. '
+            'When omitted, locales are detected from .arb / .lproj files.',
+      )
       ..addOption(
         'keystore',
         help: 'Path to the release keystore (.jks/.keystore). When provided, '
@@ -137,6 +150,8 @@ class OptimizeCommand extends Command<int> {
         obfuscate: args.flag('obfuscate'),
         treeShakeIcons: args.flag('tree-shake-icons'),
         analyzeOnly: args.flag('analyze-only'),
+        aggressive: args.flag('aggressive'),
+        locales: args.multiOption('locales'),
         keystore: args.option('keystore'),
         storePassword: args.option('store-password'),
         keyAlias: args.option('key-alias'),

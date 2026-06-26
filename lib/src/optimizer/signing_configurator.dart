@@ -138,7 +138,8 @@ class SigningConfigurator {
       return SigningResult(
         action: SigningAction.generated,
         reason: 'Created ${keyPropsFile.path} for keystore $storePath.',
-      );    }
+      );
+    }
 
     // (4) Debug fallback.
     if (debugSigning) {
@@ -212,9 +213,8 @@ class SigningConfigurator {
     final body = content.substring(release.bodyStart, release.bodyEnd);
     final after = content.substring(release.bodyEnd);
 
-    final debugTarget = isKotlin
-        ? 'signingConfigs.getByName("debug")'
-        : 'signingConfigs.debug';
+    final debugTarget =
+        isKotlin ? 'signingConfigs.getByName("debug")' : 'signingConfigs.debug';
 
     final newBody = body
         .replaceAll(

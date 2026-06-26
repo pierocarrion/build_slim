@@ -21,6 +21,8 @@ class AndroidOptimizer {
   AndroidOptimizer({
     required this.projectDir,
     required this.logger,
+    this.aggressive = false,
+    this.locales = const [],
   });
 
   /// Root directory of the Flutter project.
@@ -28,6 +30,15 @@ class AndroidOptimizer {
 
   /// Logger for diagnostic output.
   final Logger logger;
+
+  /// When true, applies destructive optimizations (R8 full mode, strict
+  /// resource shrinking) that ship with `.bak` backups. Default false keeps
+  /// the optimizer in its historical safe mode.
+  final bool aggressive;
+
+  /// Locales to inject as Android `resConfigs`. When empty, resConfigs is not
+  /// touched (the LocaleDetector resolves the list upstream).
+  final List<String> locales;
 
   /// Patches `android/app/build.gradle` and returns applied changes.
   Future<List<String>> optimize() async {
@@ -71,12 +82,15 @@ class AndroidOptimizer {
       isKotlin: isKotlin,
     );
     content = _ensureAbiFilters(content, isKotlin: isKotlin);
+    content = _ensureResConfigs(content, locales, isKotlin: isKotlin);
     content = _ensureBundleLanguageSplit(content);
 
     if (content != originalContent) {
       await _writeWithBackup(gradleFile, content);
+      final localeNote =
+          locales.isEmpty ? '' : ', resConfigs=${locales.join(",")}';
       applied.add('Patched ${p.basename(gradlePath)} (minifyEnabled, '
-          'shrinkResources, abiFilters, language split)');
+          'shrinkResources, abiFilters$localeNote, language split)');
     }
 
     final proguardRules = File(p.join(
@@ -88,6 +102,13 @@ class AndroidOptimizer {
     if (!proguardRules.existsSync()) {
       await proguardRules.writeAsString(_defaultProguardRules);
       applied.add('Created default proguard-rules.pro');
+    }
+
+    // Aggressive, opt-in patches. Each guards behind [aggressive] so default
+    // runs remain non-destructive.
+    if (aggressive) {
+      applied.addAll(await _applyStrictShrinkMode());
+      applied.addAll(await _applyR8FullMode());
     }
 
     return applied;
@@ -169,6 +190,106 @@ class AndroidOptimizer {
     final after = content.substring(androidBlock.bodyStart);
     return '$before\n    $line$after';
   }
+
+  /// Injects `resConfigs` into the `defaultConfig` block so the Android build
+  /// discards localized resources from third-party AARs that the app does not
+  /// ship. Idempotent: never overwrites an existing `resConfigs` declaration.
+  String _ensureResConfigs(
+    String content,
+    List<String> locales, {
+    required bool isKotlin,
+  }) {
+    if (locales.isEmpty) return content;
+    // Conservative: bail out on any pre-existing resConfigs (Groovy or Kotlin)
+    // to never clobber a hand-tuned configuration.
+    if (content.contains('resConfigs')) return content;
+
+    final defaultConfig = _findNamedBlock(content, 'defaultConfig');
+    if (defaultConfig == null) return content;
+
+    final quoted = locales.map((l) => isKotlin ? '"$l"' : "'$l'").join(', ');
+    final line = isKotlin ? 'resConfigs($quoted)' : 'resConfigs $quoted';
+
+    final before = content.substring(0, defaultConfig.bodyStart);
+    final after = content.substring(defaultConfig.bodyStart);
+    return '$before\n        $line$after';
+  }
+
+  /// Creates `android/app/src/main/res/raw/keep.xml` with strict shrink mode.
+  ///
+  /// Only applied under [aggressive]. Never overwrites an existing keep.xml:
+  /// if the developer has tuned shrink rules manually, we leave them alone and
+  /// log a warning so they can opt in explicitly.
+  Future<List<String>> _applyStrictShrinkMode() async {
+    final applied = <String>[];
+    final keepFile = File(p.join(
+      projectDir,
+      'android',
+      'app',
+      'src',
+      'main',
+      'res',
+      'raw',
+      'keep.xml',
+    ));
+
+    if (keepFile.existsSync()) {
+      final existing = await keepFile.readAsString();
+      if (existing.contains('shrinkMode="strict"')) {
+        logger.verbose('keep.xml already in strict shrink mode.');
+        return applied;
+      }
+      logger.warning(
+        'keep.xml already exists without strict shrinkMode; leaving it '
+        'untouched. Edit manually if you want aggressive shrinking.',
+      );
+      return applied;
+    }
+
+    await keepFile.create(recursive: true);
+    await keepFile.writeAsString(_strictKeepXml);
+    applied.add('Created res/raw/keep.xml with tools:shrinkMode="strict" '
+        '(may break resources loaded via getIdentifier; review before '
+        'publishing)');
+    return applied;
+  }
+
+  /// Patches `android/gradle.properties` to enable R8 full mode.
+  ///
+  /// Backs up the original as `gradle.properties.bak` (only if no backup
+  /// exists yet) so users can roll back if a missing keep rule breaks the
+  /// release build.
+  Future<List<String>> _applyR8FullMode() async {
+    final applied = <String>[];
+    final file = File(p.join(projectDir, 'android', 'gradle.properties'));
+    if (!file.existsSync()) {
+      await file.writeAsString('android.enableR8.fullMode=true\n');
+      applied.add('Created android/gradle.properties with '
+          'android.enableR8.fullMode=true');
+      return applied;
+    }
+
+    final content = await file.readAsString();
+    final flagPresent = RegExp(
+      r'android\.enableR8\.fullMode\s*=\s*true',
+      caseSensitive: false,
+    ).hasMatch(content);
+    if (flagPresent) {
+      logger.verbose('R8 full mode already enabled.');
+      return applied;
+    }
+
+    await _writeWithBackup(file, '$content\nandroid.enableR8.fullMode=true\n');
+    applied.add('Enabled android.enableR8.fullMode=true in gradle.properties '
+        '(backup at gradle.properties.bak; restore if ProGuard rules break '
+        'the release build)');
+    return applied;
+  }
+
+  static const String _strictKeepXml = '''<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:shrinkMode="strict" />
+''';
 
   /// Locates the body of the first `<name> { ... }` block by brace matching.
   _BlockRange? _findNamedBlock(String content, String name) {

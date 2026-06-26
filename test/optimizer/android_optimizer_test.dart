@@ -204,15 +204,13 @@ android {
       final afterFirst = await File(
         p.join(tempDir.path, 'android', 'app', 'build.gradle.kts'),
       ).readAsString();
-      final firstMinify =
-          'isMinifyEnabled'.allMatches(afterFirst).length;
+      final firstMinify = 'isMinifyEnabled'.allMatches(afterFirst).length;
 
       await runOptimizer();
       final afterSecond = await File(
         p.join(tempDir.path, 'android', 'app', 'build.gradle.kts'),
       ).readAsString();
-      final secondMinify =
-          'isMinifyEnabled'.allMatches(afterSecond).length;
+      final secondMinify = 'isMinifyEnabled'.allMatches(afterSecond).length;
 
       expect(secondMinify, firstMinify);
     });
@@ -374,7 +372,220 @@ android {
       // Kotlin DSL uses the is-prefixed property names and listOf syntax.
       expect(content, contains('isMinifyEnabled = true'));
       expect(content, contains('isShrinkResources = true'));
-      expect(content, contains('abiFilters += listOf("arm64-v8a", "armeabi-v7a")'));
+      expect(content,
+          contains('abiFilters += listOf("arm64-v8a", "armeabi-v7a")'));
+    });
+  });
+
+  group('AndroidOptimizer resConfigs', () {
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('android_resconfigs_');
+      await writeGradle('''
+android {
+    defaultConfig {
+        applicationId "com.example.test"
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+        }
+    }
+}
+''');
+    });
+
+    tearDown(() async {
+      await tempDir.delete(recursive: true);
+    });
+
+    test('injects resConfigs with Groovy syntax when locales provided',
+        () async {
+      final optimizer = AndroidOptimizer(
+        projectDir: tempDir.path,
+        logger: Logger(level: LogLevel.none),
+        locales: const ['en', 'es'],
+      );
+      await optimizer.optimize();
+
+      final content =
+          await File(p.join(tempDir.path, 'android', 'app', 'build.gradle'))
+              .readAsString();
+      expect(content, contains("resConfigs 'en', 'es'"));
+    });
+
+    test('injects resConfigs with Kotlin DSL syntax in .kts', () async {
+      // Remove the Groovy file and write a kts one.
+      await File(p.join(tempDir.path, 'android', 'app', 'build.gradle'))
+          .delete();
+      await writeGradle('''
+android {
+    defaultConfig { }
+    buildTypes { release { isMinifyEnabled = true } }
+}
+''', filename: 'build.gradle.kts');
+
+      final optimizer = AndroidOptimizer(
+        projectDir: tempDir.path,
+        logger: Logger(level: LogLevel.none),
+        locales: const ['en', 'fr'],
+      );
+      await optimizer.optimize();
+
+      final content =
+          await File(p.join(tempDir.path, 'android', 'app', 'build.gradle.kts'))
+              .readAsString();
+      expect(content, contains('resConfigs("en", "fr")'));
+    });
+
+    test('does not overwrite an existing resConfigs declaration', () async {
+      await writeGradle('''
+android {
+    defaultConfig { resConfigs 'en', 'de' }
+    buildTypes { release { minifyEnabled true shrinkResources true } }
+}
+''');
+      final optimizer = AndroidOptimizer(
+        projectDir: tempDir.path,
+        logger: Logger(level: LogLevel.none),
+        locales: const ['es'],
+      );
+      await optimizer.optimize();
+
+      final content =
+          await File(p.join(tempDir.path, 'android', 'app', 'build.gradle'))
+              .readAsString();
+      expect(content, contains("'en', 'de'"));
+      expect(content, isNot(contains("'es'")));
+    });
+
+    test('skips resConfigs when locales list is empty', () async {
+      final optimizer = AndroidOptimizer(
+        projectDir: tempDir.path,
+        logger: Logger(level: LogLevel.none),
+      );
+      await optimizer.optimize();
+
+      final content =
+          await File(p.join(tempDir.path, 'android', 'app', 'build.gradle'))
+              .readAsString();
+      expect(content, isNot(contains('resConfigs')));
+    });
+  });
+
+  group('AndroidOptimizer aggressive mode', () {
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('android_aggressive_');
+      await writeGradle('''
+android {
+    defaultConfig { }
+    buildTypes { release { } }
+}
+''');
+    });
+
+    tearDown(() async {
+      await tempDir.delete(recursive: true);
+    });
+
+    AndroidOptimizer optimizer({bool aggressive = false}) => AndroidOptimizer(
+          projectDir: tempDir.path,
+          logger: Logger(level: LogLevel.none),
+          aggressive: aggressive,
+        );
+
+    test('does not create keep.xml when aggressive is false', () async {
+      await optimizer(aggressive: false).optimize();
+      expect(
+        File(p.join(tempDir.path, 'android', 'app', 'src', 'main', 'res', 'raw',
+                'keep.xml'))
+            .existsSync(),
+        isFalse,
+      );
+    });
+
+    test('creates keep.xml with strict shrinkMode when aggressive', () async {
+      await optimizer(aggressive: true).optimize();
+      final keepFile = File(p.join(tempDir.path, 'android', 'app', 'src',
+          'main', 'res', 'raw', 'keep.xml'));
+      expect(keepFile.existsSync(), isTrue);
+      final content = await keepFile.readAsString();
+      expect(content, contains('tools:shrinkMode="strict"'));
+    });
+
+    test('does not overwrite an existing keep.xml without strict mode',
+        () async {
+      final keepFile = File(p.join(tempDir.path, 'android', 'app', 'src',
+          'main', 'res', 'raw', 'keep.xml'));
+      await keepFile.create(recursive: true);
+      await keepFile.writeAsString(
+          '<?xml version="1.0"?><resources tools:keep="@layout/*" '
+          'xmlns:tools="http://schemas.android.com/tools"/>');
+
+      await optimizer(aggressive: true).optimize();
+
+      final content = await keepFile.readAsString();
+      expect(content, contains('tools:keep'));
+      expect(content, isNot(contains('shrinkMode="strict"')));
+    });
+
+    test('does not touch gradle.properties when aggressive is false', () async {
+      final propsFile =
+          File(p.join(tempDir.path, 'android', 'gradle.properties'));
+      await propsFile.create(recursive: true);
+      await propsFile.writeAsString('org.gradle.jvmargs=-Xmx\n');
+
+      await optimizer(aggressive: false).optimize();
+
+      final content = await propsFile.readAsString();
+      expect(content, isNot(contains('enableR8.fullMode')));
+    });
+
+    test('enables R8 full mode in gradle.properties when aggressive', () async {
+      final propsFile =
+          File(p.join(tempDir.path, 'android', 'gradle.properties'));
+      await propsFile.create(recursive: true);
+      await propsFile.writeAsString('org.gradle.jvmargs=-Xmx\n');
+
+      await optimizer(aggressive: true).optimize();
+
+      final content = await propsFile.readAsString();
+      expect(content, contains('android.enableR8.fullMode=true'));
+      // Backup created.
+      expect(
+        File(p.join(tempDir.path, 'android', 'gradle.properties.bak'))
+            .existsSync(),
+        isTrue,
+      );
+    });
+
+    test('does not duplicate R8 full mode flag on second run', () async {
+      final propsFile =
+          File(p.join(tempDir.path, 'android', 'gradle.properties'));
+      await propsFile.create(recursive: true);
+      await propsFile.writeAsString('android.enableR8.fullMode=true\n');
+
+      final applied = await optimizer(aggressive: true).optimize();
+
+      final content = await propsFile.readAsString();
+      // Exactly one occurrence.
+      final count = 'android.enableR8.fullMode=true'.allMatches(content).length;
+      expect(count, 1);
+      // And no applied entry mentions the change.
+      expect(applied.any((s) => s.contains('R8 full mode')), isFalse);
+    });
+
+    test('creates gradle.properties if it does not exist', () async {
+      final applied = await optimizer(aggressive: true).optimize();
+
+      final propsFile =
+          File(p.join(tempDir.path, 'android', 'gradle.properties'));
+      expect(propsFile.existsSync(), isTrue);
+      expect(await propsFile.readAsString(),
+          contains('android.enableR8.fullMode=true'));
+      expect(
+          applied.any((s) => s.contains('Created android/gradle.properties')),
+          isTrue);
     });
   });
 }

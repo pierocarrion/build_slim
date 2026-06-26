@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-25
+
+### Added — advanced size strategies
+- **`--aggressive`** flag: opt-in bundle of destructive optimizations. Every
+  change ships with a `.bak` backup so users can roll back. Without the flag,
+  `build_slim` keeps its historical, fully-safe behaviour.
+  - **PNG/JPEG → WebP conversion** (`WebPConverter`): converts raster assets to
+    WebP via `cwebp` and rewrites the references in `lib/**/*.dart` and
+    `pubspec.yaml`. Atomic: if any conversion fails, no references are touched
+    and the originals are preserved.
+  - **R8 full mode** (`android.enableR8.fullMode=true`): injected into
+    `android/gradle.properties` with backup. Removes substantially more
+    unreachable code than the default safe mode.
+  - **Strict resource shrinking** (`res/raw/keep.xml` with
+    `tools:shrinkMode="strict"`): created only when absent; existing keep
+    rules are never overwritten.
+- **`--locales`** flag + auto-detection: injects Android `resConfigs` so
+  third-party AARs (Play Services, AndroidX) no longer drag dozens of unused
+  `values-xx` folders into the artifact. Locales are auto-detected from
+  `*.arb` files and iOS `.lproj` directories when the flag is omitted.
+- **`FindingSeverity.critical`** and **`Finding.breaking`**: new model fields
+  surfaced by the console/HTML reporters with distinct styling so users
+  immediately spot high-impact issues and changes that may break the build.
+
+### Added — passive findings (analyze-only safe)
+- **Heavy GIF audit**: GIFs above 300KB are flagged as `critical` recommending
+  Lottie/Rive vector animations.
+- **Font subsetting recommendation**: `.ttf`/`.otf` files above 200KB emit a
+  warning suggesting `pyftsubset` (a 600KB Latin font typically drops to ~30KB).
+- **Target-aware `extractNativeLibs` guidance**: AAB targets now recommend
+  `extractNativeLibs="false"` (Play Store requirement for uncompressed native
+  libs); APK/legacy targets preserve the previous warning. No more contradictory
+  advice.
+- **Deferred import suggestions**: heavy packages imported eagerly in `lib/`
+  emit an info finding recommending `import ... deferred as ...` so App Bundles
+  can ship them as on-demand splits.
+- **R8 full mode audit** (`--analyze-only`): reports when the flag is missing,
+  even without running the optimizer.
+
+### Changed
+- `OptimizerPipeline.run` and `ProjectAnalyzer` now accept the build `target`
+  so target-aware findings can be emitted. The `target` parameter is optional
+  on the analyzer to preserve backwards compatibility for direct callers.
+- `pubspec.yaml` version bumped to `0.4.0`.
+
 ## [0.3.0] - 2026-06-22
 
 ### Fixed

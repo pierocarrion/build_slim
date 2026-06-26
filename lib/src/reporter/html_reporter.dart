@@ -22,11 +22,15 @@ class HtmlReporter implements Reporter {
       final savings = finding.estimatedSavingsBytes == null
           ? ''
           : '<span class="savings">~${FileSizeUtil.format(finding.estimatedSavingsBytes!)}</span>';
+      final breakingBadge = finding.breaking
+          ? '<span class="badge badge-breaking">breaking</span>'
+          : '';
       return '''
       <div class="finding">
         <div class="finding-header">
           <span class="badge $badgeClass">${finding.severity.name}</span>
           <strong>${_escapeHtml(finding.title)}</strong>
+          $breakingBadge
           $savings
         </div>
         <p>${_escapeHtml(finding.description)}</p>
@@ -55,8 +59,10 @@ class HtmlReporter implements Reporter {
     .finding-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
     .badge { border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.8rem; text-transform: uppercase; color: #fff; }
     .badge-error { background: #d32f2f; }
+    .badge-critical { background: #c62828; }
     .badge-warning { background: #f57c00; }
     .badge-info { background: #1976d2; }
+    .badge-breaking { background: #6a1b9a; margin-left: 0.25rem; }
     .savings { color: #388e3c; font-weight: 600; margin-left: auto; }
     .recommendation { color: #00695c; }
     ul { line-height: 1.6; }

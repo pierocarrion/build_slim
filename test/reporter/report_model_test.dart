@@ -170,6 +170,46 @@ void main() {
       expect(result.artifactSizeBytes, isNull);
     });
   });
+
+  group('Finding.breaking and FindingSeverity.critical', () {
+    test('breaking defaults to false', () {
+      const finding = Finding(
+        id: 'x',
+        severity: FindingSeverity.info,
+        title: 't',
+        description: 'd',
+      );
+      expect(finding.breaking, isFalse);
+    });
+
+    test('toJson includes breaking only when true', () {
+      const breaking = Finding(
+        id: 'x',
+        severity: FindingSeverity.warning,
+        title: 't',
+        description: 'd',
+        breaking: true,
+      );
+      const safe = Finding(
+        id: 'x',
+        severity: FindingSeverity.warning,
+        title: 't',
+        description: 'd',
+      );
+      expect(breaking.toJson().containsKey('breaking'), isTrue);
+      expect(safe.toJson().containsKey('breaking'), isFalse);
+    });
+
+    test('critical severity serializes by name', () {
+      const finding = Finding(
+        id: 'x',
+        severity: FindingSeverity.critical,
+        title: 't',
+        description: 'd',
+      );
+      expect(finding.toJson()['severity'], 'critical');
+    });
+  });
 }
 
 final _fixedDate = DateTime.utc(2024, 1, 1);

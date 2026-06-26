@@ -110,10 +110,14 @@ void main() {
     test('passes signing credentials to the pipeline', () async {
       await runner.run([
         'optimize',
-        '--keystore', '/path/to/upload.jks',
-        '--store-password', 'sp',
-        '--key-alias', 'alias',
-        '--key-password', 'kp',
+        '--keystore',
+        '/path/to/upload.jks',
+        '--store-password',
+        'sp',
+        '--key-alias',
+        'alias',
+        '--key-password',
+        'kp',
       ]);
       final call = pipeline.lastCall!;
       expect(call.keystore, '/path/to/upload.jks');
@@ -209,6 +213,43 @@ void main() {
     test('uses verbose log level when --verbose', () async {
       final code = await runner.run(['optimize', '--verbose']);
       expect(code, 0);
+    });
+  });
+
+  group('OptimizeCommand advanced flags', () {
+    test('passes --aggressive to the pipeline', () async {
+      await runner.run(['optimize', '--aggressive']);
+      expect(pipeline.lastCall!.aggressive, isTrue);
+    });
+
+    test('aggressive defaults to false', () async {
+      await runner.run(['optimize']);
+      expect(pipeline.lastCall!.aggressive, isFalse);
+    });
+
+    test('passes --locales values to the pipeline', () async {
+      await runner.run([
+        'optimize',
+        '--locales',
+        'en',
+        '--locales',
+        'es',
+        '--locales',
+        'fr'
+      ]);
+      expect(pipeline.lastCall!.locales, ['en', 'es', 'fr']);
+    });
+
+    test('locales defaults to empty', () async {
+      await runner.run(['optimize']);
+      expect(pipeline.lastCall!.locales, isEmpty);
+    });
+
+    test('help mentions aggressive and locales', () async {
+      final command = OptimizeCommand(pipeline: pipeline, loggerSink: sink);
+      // The flags are declared on the command's argParser.
+      expect(command.argParser.options.containsKey('aggressive'), isTrue);
+      expect(command.argParser.options.containsKey('locales'), isTrue);
     });
   });
 }

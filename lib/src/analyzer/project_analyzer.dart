@@ -17,6 +17,7 @@ class ProjectAnalyzer {
   ProjectAnalyzer({
     required this.projectDir,
     required this.logger,
+    this.target,
   });
 
   /// Root directory of the Flutter project.
@@ -24,6 +25,9 @@ class ProjectAnalyzer {
 
   /// Logger for diagnostic output.
   final Logger logger;
+
+  /// Build target, used to emit target-aware findings.
+  final BuildTarget? target;
 
   /// Runs all registered analyzers and returns combined findings.
   Future<List<Finding>> analyze() async {
@@ -37,9 +41,9 @@ class ProjectAnalyzer {
     findings.addAll(
         await DependencyAnalyzer(projectDir: projectDir, logger: logger)
             .analyze());
-    findings.addAll(
-        await NativeConfigAnalyzer(projectDir: projectDir, logger: logger)
-            .analyze());
+    findings.addAll(await NativeConfigAnalyzer(
+            projectDir: projectDir, logger: logger, target: target)
+        .analyze());
     findings.addAll(
         await DartAnalyzer(projectDir: projectDir, logger: logger).analyze());
 

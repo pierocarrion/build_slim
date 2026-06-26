@@ -1,3 +1,4 @@
+import '../analyzer/locale_detector.dart';
 import '../analyzer/project_analyzer.dart';
 import '../builder/artifact_comparator.dart';
 import '../builder/build_runner.dart';
@@ -9,6 +10,7 @@ import 'asset_optimizer.dart';
 import 'dart_optimizer.dart';
 import 'ios_optimizer.dart';
 import 'signing_configurator.dart';
+import 'webp_optimizer.dart';
 
 /// Orchestrates analysis, patching, build, and report generation.
 class OptimizerPipeline {
@@ -33,6 +35,8 @@ class OptimizerPipeline {
     bool obfuscate = false,
     bool treeShakeIcons = false,
     bool analyzeOnly = false,
+    bool aggressive = false,
+    List<String> locales = const [],
     String? keystore,
     String? storePassword,
     String? keyAlias,
@@ -40,9 +44,26 @@ class OptimizerPipeline {
     bool debugSigning = false,
   }) async {
     logger.info('Analyzing project at $projectDir...');
-    final analyzer = ProjectAnalyzer(projectDir: projectDir, logger: logger);
+    final analyzer = ProjectAnalyzer(
+      projectDir: projectDir,
+      logger: logger,
+      target: target,
+    );
     final findings = await analyzer.analyze();
     final projectName = await analyzer.projectName();
+
+    // Resolve supported locales: explicit --locales wins, otherwise auto-detect
+    // from ARB / .lproj. Auto-detected findings surface in the report so users
+    // know to override when the heuristic misses.
+    List<String> resolvedLocales = locales;
+    if (resolvedLocales.isEmpty) {
+      final detection = await LocaleDetector(
+        projectDir: projectDir,
+        logger: logger,
+      ).detect();
+      resolvedLocales = detection.locales;
+      findings.addAll(detection.findings);
+    }
 
     if (analyzeOnly) {
       logger.info('Analyze-only mode; skipping build.');
@@ -71,6 +92,8 @@ class OptimizerPipeline {
     final androidOptimizer = AndroidOptimizer(
       projectDir: projectDir,
       logger: logger,
+      aggressive: aggressive,
+      locales: resolvedLocales,
     );
     appliedOptimizations.addAll(await androidOptimizer.optimize());
 
@@ -79,6 +102,17 @@ class OptimizerPipeline {
       logger: logger,
     );
     appliedOptimizations.addAll(await iosOptimizer.optimize());
+
+    // WebP conversion runs before generic asset compression so the latter can
+    // still recompress any WebP that cwebp left suboptimal. Only active under
+    // --aggressive; otherwise a documented no-op.
+    final webpConverter = WebPConverter(
+      projectDir: projectDir,
+      logger: logger,
+      processRunner: processRunner,
+      aggressive: aggressive,
+    );
+    appliedOptimizations.addAll(await webpConverter.convert());
 
     final assetOptimizer = AssetOptimizer(
       projectDir: projectDir,
